@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Il Gigante di Brema 3D - L'Avventura delle Pozioni</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #090d16;
+            font-family: 'Nunito', sans-serif;
+            color: #f8fafc;
+        }
+        .font-title {
+            font-family: 'Fredoka', sans-serif;
+        }
+        #game-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            z-index: 1;
+        }
+        /* Mirino centrale */
+        #crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            width: 24px;
+            height: 24px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 20;
+            transition: transform 0.1s ease;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.85);
+            box-shadow: 0 0 6px #38bdf8;
+        }
+        #crosshair::before {
+            top: 11px; left: 3px; width: 18px; height: 2px;
+        }
+        #crosshair::after {
+            left: 11px; top: 3px; width: 2px; height: 18px;
+        }
+        .crosshair-active {
+            transform: translate(-50%, -50%) scale(1.35) !important;
+        }
+        /* Animazione ingresso testo in basso a destra */
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(25px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .dialogue-pop {
+            animation: slideInRight 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        /* Pulsante stile arcade */
+        .btn-3d {
+            background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%);
+            border: 2px solid #fef3c7;
+            box-shadow: 0 5px 0 #92400e, 0 10px 20px rgba(0,0,0,0.5);
+            color: #451a03;
+            font-family: 'Fredoka', sans-serif;
+            font-weight: 700;
+            transition: transform 0.1s, filter 0.1s;
+            cursor: pointer;
+        }
+        .btn-3d:hover {
+            filter: brightness(1.08);
+            transform: translateY(-2px);
+        }
+        .btn-3d:active {
+            transform: translateY(3px);
+            box-shadow: 0 2px 0 #92400e;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Canvas 3D Fullscreen -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Mirino Centrale -->
+    <div id="crosshair" class="hidden"></div>
+
+    <!-- ========================================================= -->
+    <!-- HUD SUPERIORE: STATO, SALUTE E BARRA BOSS GIGANTE DI BREMA -->
+    <!-- ========================================================= -->
+    <div id="hud-top" class="hidden fixed top-0 left-0 right-0 z-20 p-3 sm:p-5 flex flex-col gap-3 pointer-events-none">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <!-- Stato Giocatore & Inventario -->
+            <div class="bg-slate-900/80 backdrop-blur-md border-2 border-indigo-500/50 rounded-2xl p-3 shadow-xl pointer-events-auto min-w-[230px]">
+                <div class="flex items-center justify-between mb-1.5">
+                    <span class="font-title text-sm text-amber-300 tracking-wide">❤️ RESISTENZA ALL'AURORA</span>
+                    <span id="player-hp-text" class="text-xs font-bold text-emerald-300">100 / 100</span>
+                </div>
+                <div class="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-600 mb-2.5">
+                    <div id="player-hp-bar" class="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-200" style="width: 100%"></div>
+                </div>
+
+                <!-- Slot Ingredienti / Pozione -->
+                <div class="flex items-center justify-between text-xs text-slate-300 mb-1">
+                    <span class="font-bold text-sky-300">🎒 Zaino Alchemico:</span>
+                    <span id="inventory-count" class="font-bold text-amber-300">0 / 4 Ingredienti</span>
+                </div>
+                <div id="inventory-icons" class="flex gap-1.5">
+                    <div class="w-8 h-8 rounded-lg bg-slate-800/90 border border-slate-600 flex items-center justify-center text-sm opacity-40">🌼</div>
+                    <div class="w-8 h-8 rounded-lg bg-slate-800/90 border border-slate-600 flex items-center justify-center text-sm opacity-40">☁️</div>
+                    <div class="w-8 h-8 rounded-lg bg-slate-800/90 border border-slate-600 flex items-center justify-center text-sm opacity-40">💧</div>
+                    <div class="w-8 h-8 rounded-lg bg-slate-800/90 border border-slate-600 flex items-center justify-center text-sm opacity-40">✨</div>
+                </div>
+            </div>
+
+            <!-- Barra Boss Fight (Appare nell'Atto 3) -->
+            <div id="boss-hud" class="hidden flex-1 max-w-xl mx-auto bg-purple-950/85 backdrop-blur-md border-2 border-fuchsia-500/70 rounded-2xl p-3 shadow-2xl">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="font-title text-base sm:text-lg text-fuchsia-300 tracking-wider flex items-center gap-2">
+                        <span>👹 IL GIGANTE DI BREMA</span>
+                        <span id="boss-phase-tag" class="text-xs bg-fuchsia-800/80 text-white px-2 py-0.5 rounded-full">Furia dell'Aurora</span>
+                    </span>
+                    <span id="boss-hp-text" class="text-xs font-bold text-amber-300">100%</span>
+                </div>
+                <div class="w-full h-4 bg-slate-900 rounded-full overflow-hidden border border-fuchsia-400/50 p-0.5">
+                    <div id="boss-hp-bar" class="h-full bg-gradient-to-r from-fuchsia-500 via-purple-500 to-amber-400 rounded-full transition-all duration-150" style="width: 100%"></div>
+                </div>
+            </div>
+
+            <!-- Controlli Audio e Blocca Mouse -->
+            <div class="flex items-center gap-2 pointer-events-auto">
+                <button id="lock-hint-btn" onclick="requestPointerLockSafe()" class="bg-indigo-600/90 hover:bg-indigo-500 border border-indigo-300/50 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-lg transition">
+                    🖱️ Blocca Visuale Mouse
+                </button>
+                <button id="mute-btn" onclick="toggleMute()" class="bg-slate-900/85 hover:bg-slate-800 border border-slate-600 text-xs font-bold px-3 py-2 rounded-xl shadow-lg transition">
+                    🔊 Audio
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- PROMPT INTERAZIONE CONTESTUALE AL CENTRO-BASSO            -->
+    <!-- ========================================================= -->
+    <div id="interaction-prompt" class="hidden fixed bottom-36 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+        <div class="bg-amber-400 text-slate-950 font-title font-bold text-sm sm:text-base px-5 py-2 rounded-full shadow-2xl border-2 border-white flex items-center gap-2 animate-bounce">
+            <span id="prompt-key" class="bg-slate-900 text-amber-300 px-2.5 py-0.5 rounded-lg text-xs">E</span>
+            <span id="prompt-text">Raccogli Ingrediente</span>
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- LEGENDA COMANDI COMPATTA IN BASSO A SINISTRA              -->
+    <!-- ========================================================= -->
+    <div id="controls-legend" class="hidden fixed bottom-4 left-4 z-20 bg-slate-900/80 backdrop-blur-md border border-slate-700/80 rounded-2xl p-3 text-xs text-slate-300 shadow-xl pointer-events-none">
+        <div class="font-title text-amber-300 mb-1.5 text-sm">🎮 COMANDI</div>
+        <div class="grid grid-cols-2 gap-x-4 gap-y-1">
+            <div><span class="bg-slate-800 text-white font-bold px-1.5 py-0.5 rounded border border-slate-600">WASD</span> Muoviti</div>
+            <div><span class="bg-slate-800 text-white font-bold px-1.5 py-0.5 rounded border border-slate-600">SPAZIO</span> Salta</div>
+            <div><span class="bg-slate-800 text-emerald-300 font-bold px-1.5 py-0.5 rounded border border-slate-600">E</span> Raccogli</div>
+            <div><span class="bg-slate-800 text-cyan-300 font-bold px-1.5 py-0.5 rounded border border-slate-600">F</span> Posiziona</div>
+            <div class="col-span-2 mt-0.5"><span class="bg-slate-800 text-amber-300 font-bold px-1.5 py-0.5 rounded border border-slate-600">CLICK SINISTRO</span> Lancia Pozione / Attacca</div>
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- BOX NARRATIVO E DIALOGHI IN BASSO A DESTRA                -->
+    <!-- ========================================================= -->
+    <div id="dialogue-box" class="hidden fixed bottom-4 right-4 z-30 w-[calc(100%-2rem)] sm:w-[410px] bg-slate-950/90 backdrop-blur-lg border-2 border-amber-400/70 rounded-2xl p-4 shadow-2xl pointer-events-auto">
+        <div class="flex items-center justify-between mb-1.5">
+            <div class="flex items-center gap-2">
+                <span id="dialogue-avatar" class="text-xl bg-indigo-900/90 w-8 h-8 rounded-lg flex items-center justify-center border border-indigo-400/40">📖</span>
+                <div>
+                    <div id="dialogue-speaker" class="font-title text-sm font-bold text-amber-300 leading-none">Storia</div>
+                    <div id="dialogue-quest" class="text-[11px] font-bold text-sky-300 mt-0.5">Obiettivo: Raggiungi il laboratorio</div>
+                </div>
+            </div>
+            <span id="act-badge" class="text-[10px] uppercase tracking-wider font-extrabold bg-indigo-900 text-indigo-200 px-2 py-0.5 rounded-full border border-indigo-500/40">Atto 1</span>
+        </div>
+        <p id="dialogue-text" class="text-xs sm:text-sm text-slate-200 leading-relaxed">
+            Stamattina ti sei svegliato e hai visto persone alte, senza capelli e con la testa a punta scappare! Corri nel laboratorio "Bussa scappa al più lontano"!
+        </p>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- SCHERMATA INIZIALE OVERLAY (START GAME)                   -->
+    <!-- ========================================================= -->
+    <div id="start-overlay" class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="max-w-lg w-full bg-slate-900/95 border-4 border-indigo-500/70 rounded-3xl p-6 sm:p-8 text-center shadow-2xl">
+            <div class="text-5xl mb-2">🧪👹🏰</div>
+            <h1 class="font-title text-3xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-200 to-sky-300 mb-2">
+                IL GIGANTE DI BREMA 3D
+            </h1>
+            <p class="text-xs sm:text-sm text-indigo-200 font-bold uppercase tracking-widest mb-4">
+                Edizione Azione 3D • Laboratorio & Boss Fight
+            </p>
+            <div class="bg-indigo-950/80 border border-indigo-500/40 rounded-2xl p-4 text-left text-xs sm:text-sm text-slate-200 space-y-2 mb-6">
+                <p>🌅 <strong>La Storia:</strong> Il Gigante di Brema sta trasformando tutti in persone alte, senza capelli e con la testa a punta usando la pozione velenosa <em>"L'Aurora"</em>.</p>
+                <p>🧪 <strong>La Missione:</strong> Entra nel laboratorio <em>"Bussa scappa al più lontano"</em> da <strong>Luana</strong> e <strong>Carapalatozzolo</strong>, raccogli gli ingredienti (<strong>E</strong>), posizionali nel calderone (<strong>F</strong>) per creare <em>"La Benedetta"</em> e sconfiggi il Gigante in piazza (<strong>Click Sinistro</strong>)!</p>
+            </div>
+            <button id="start-btn" onclick="startGame3D()" class="btn-3d w-full py-4 rounded-2xl text-xl uppercase tracking-wider">
+                Entra nel Mondo 3D 🚀
+            </button>
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- SCHERMATA FINE PARTITA (VITTORIA O SCONFITTA)             -->
+    <!-- ========================================================= -->
+    <div id="end-overlay" class="hidden fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="max-w-lg w-full bg-slate-900/95 border-4 border-amber-400/80 rounded-3xl p-6 sm:p-8 text-center shadow-2xl">
+            <div id="end-emoji" class="text-6xl mb-3">🏆🎉</div>
+            <h2 id="end-title" class="font-title text-3xl sm:text-4xl font-extrabold text-amber-300 mb-3">
+                BREMA È SALVA!
+            </h2>
+            <p id="end-desc" class="text-sm sm:text-base text-slate-200 leading-relaxed mb-6">
+                La Benedetta ha colpito il Gigante di Brema prima che potesse lanciare L'Aurora! Il Gigante si è calmato, a tutti sono tornati i capelli e l'aspetto di prima, e tutta la città vi acclama!
+            </p>
+            <button onclick="location.reload()" class="btn-3d w-full py-3.5 rounded-2xl text-lg uppercase">
+                Gioca Ancora 🔄
+            </button>
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- MOTORE 3D THREE.JS E LOGICA DI GIOCO                      -->
+    <!-- ========================================================= -->
+    <script>
+        // ==========================================
+        // 1. AUDIO SINTETIZZATO (WEB AUDIO API)
+        // ==========================================
+        let audioCtx = null;
+        let isMuted = false;
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                if (AC) audioCtx = new AC();
+            }
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            document.getElementById('mute-btn').textContent = isMuted ? '🔇 Muto' : '🔊 Audio';
+        }
+
+        function playTone(freq, type, dur, vol = 0.14, endFreq = null) {
+            if (isMuted) return;
+            try {
+                initAudio();
+                if (!audioCtx) return;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                if (endFreq) osc.frequency.exponentialRampToValueAtTime(endFreq, audioCtx.currentTime + dur);
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + dur);
+            } catch (e) {}
+        }
+
+        const SFX = {
+            pickup: () => { playTone(520, 'sine', 0.12, 0.16, 880); setTimeout(() => playTone(780, 'triangle', 0.15, 0.15, 1180), 80); },
+            place: () => { playTone(330, 'triangle', 0.18, 0.18, 660); setTimeout(() => playTone(550, 'sine', 0.25, 0.18, 990), 110); },
+            brewComplete: () => { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => playTone(f, 'triangle', 0.28, 0.2), i * 100)); },
+            throwPotion: () => playTone(380, 'sine', 0.24, 0.18, 860),
+            bossThrow: () => playTone(160, 'sawtooth', 0.35, 0.18, 85),
+            bossHit: () => { playTone(260, 'square', 0.16, 0.18, 520); setTimeout(() => playTone(620, 'sine', 0.25, 0.2, 980), 70); },
+            playerHit: () => playTone(180, 'sawtooth', 0.3, 0.22, 70),
+            jump: () => playTone(240, 'sine', 0.14, 0.12, 420),
+            victory: () => { [523, 659, 784, 1046, 784, 1046].forEach((f, i) => setTimeout(() => playTone(f, 'triangle', 0.25, 0.22), i * 130)); },
+            defeat: () => { [320, 280, 240, 180].forEach((f, i) => setTimeout(() => playTone(f, 'sawtooth', 0.3, 0.18), i * 170)); }
+        };
+
+        // ==========================================
+        // 2. SISTEMA DIALOGHI IN BASSO A DESTRA
+        // ==========================================
+        function setDialogue(speaker, avatar, act, quest, text) {
+            const box = document.getElementById('dialogue-box');
+            box.classList.remove('hidden', 'dialogue-pop');
+            void box.offsetWidth;
+            box.classList.add('dialogue-pop');
+
+            document.getElementById('dialogue-speaker').textContent = speaker;
+            document.getElementById('dialogue-avatar').textContent = avatar;
+            document.getElementById('act-badge').textContent = act;
+            document.getElementById('dialogue-quest').textContent = `🎯 ${quest}`;
+            document.getElementById('dialogue-text').innerHTML = text;
+        }
+
+        // ==========================================
+        // 3. VARIABILI GLOBALI THREE.JS E STATO GIOCO
+        // ==========================================
+        let scene, camera, renderer, clock;
+        let gameStarted = false;
+        let gameState = {
+            act: 1, // 1: Fuga/Ingresso Lab, 2: Raccolta & Calderone, 3: Boss Fight, 4: Vittoria/Fine
+            playerHp: 100,
+            maxPlayerHp: 100,
+            collectedCount: 0,
+            placedCount: 0,
+            hasBenedetta: false,
+            bossHp: 100,
+            maxBossHp: 100,
+            bossEnraged: false,
+            bossAttackCooldown: 2.2,
+            bossShockwaveCooldown: 6.5,
+            slowMoTimer: 0,
+            victory: false
+        };
+
+        // Controlli movimento e camera fluida
+        const keys = { w: false, a: false, s: false, d: false, space: false };
+        let playerGroup, playerVelocity = new THREE.Vector3(), isGrounded = true;
+        let yaw = 0, pitch = 0.18;
+        let targetYaw = 0, targetPitch = 0.18;
+        let currentCamPos = new THREE.Vector3(0, 8, 42);
+        let currentLookTarget = new THREE.Vector3(0, 2, 20);
+        let isPointerLocked = false;
+        let isDraggingMouse = false, prevMouseX = 0, prevMouseY = 0;
+
+        // Oggetti del mondo 3D
+        const colliders = []; // Box3 per collisioni muri e ripari
+        const ingredients = []; // Oggetti raccoglibili con E
+        const citizens = []; // Cittadini alti senza capelli con testa a punta
+        const projectiles = []; // Pozioni lanciate (giocatore e boss)
+        const particles = []; // Particelle magiche 3D
+        const shockwaves = []; // Onde d'urto dell'Aurora del Gigante
+
+        let cauldronGroup, cauldronLiquidMesh, benedettaPickupMesh, gateMesh, arenaBeaconGroup;
+        let giantGroup, giantHead, giantLeftArm, giantRightArm, giantAuraMesh;
+        let luanaGroup, carapalatozzoloGroup;
+
+        // ==========================================
+        // 4. INIZIALIZZAZIONE SCENA 3D
+        // ==========================================
+        function initThree() {
+            const canvas = document.getElementById('game-canvas');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a);
+            scene.fog = new THREE.FogExp2(0x0f172a, 0.011);
+
+            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 250);
+            camera.position.copy(currentCamPos);
+
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            clock = new THREE.Clock();
+
+            // Luci
+            const hemiLight = new THREE.HemisphereLight(0x93c5fd, 0x1e293b, 0.95);
+            scene.add(hemiLight);
+
+            const dirLight = new THREE.DirectionalLight(0xfef08a, 1.15);
+            dirLight.position.set(28, 48, 30);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
+            dirLight.shadow.camera.near = 5;
+            dirLight.shadow.camera.far = 140;
+            const d = 55;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+
+            // Luce magica del calderone nel laboratorio
+            const labLight = new THREE.PointLight(0x38bdf8, 1.8, 28);
+            labLight.position.set(0, 4.5, 8);
+            scene.add(labLight);
+
+            // Luce viola minacciosa del Gigante nella piazza
+            const bossLight = new THREE.PointLight(0xd946ef, 2.2, 48);
+            bossLight.position.set(0, 12, -45);
+            scene.add(bossLight);
+
+            buildWorld();
+            buildPlayer();
+            buildNPCsAndCitizens();
+            buildGiantOfBremen();
+            setupInputListeners();
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        function addWallBox(x, y, z, w, h, d, colorHex, addCollider = true) {
+            const mesh = new THREE.Mesh(
+                new THREE.BoxGeometry(w, h, d),
+                new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.75 })
+            );
+            mesh.position.set(x, y, z);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            scene.add(mesh);
+            if (addCollider) {
+                const box = new THREE.Box3().setFromCenterAndSize(
+                    new THREE.Vector3(x, y, z),
+                    new THREE.Vector3(w, h, d)
+                );
+                colliders.push(box);
+            }
+            return mesh;
+        }
+
+        function createFloatingLabel(text, bgColor = '#1e293b', textColor = '#fde047') {
+            const cvs = document.createElement('canvas');
+            cvs.width = 512;
+            cvs.height = 128;
+            const ctx = cvs.getContext('2d');
+            ctx.fillStyle = bgColor;
+            ctx.beginPath();
+            if (ctx.roundRect) {
+                ctx.roundRect(16, 20, 480, 88, 28);
+            } else {
+                ctx.rect(16, 20, 480, 88);
+            }
+            ctx.fill();
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 6;
+            ctx.stroke();
+            ctx.fillStyle = textColor;
+            ctx.font = 'bold 34px Fredoka, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 256, 65);
+
+            const tex = new THREE.CanvasTexture(cvs);
+            const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+            const sprite = new THREE.Sprite(mat);
+            sprite.scale.set(6.5, 1.65, 1);
+            return sprite;
+        }
+
+        // ==========================================
+        // 5. COSTRUZIONE MONDO, LABORATORIO E PIAZZA
+        // ==========================================
+        function buildWorld() {
+            // Terreno principale (Strada + Piazza)
+            const ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(130, 160),
+                new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 })
+            );
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Pavimento interno Laboratorio "Bussa scappa al più lontano" (z da -6 a 22, x da -16 a 16)
+            const labFloor = new THREE.Mesh(
+                new THREE.BoxGeometry(32, 0.2, 28),
+                new THREE.MeshStandardMaterial({ color: 0x172554, roughness: 0.5 })
+            );
+            labFloor.position.set(0, 0.05, 8);
+            labFloor.receiveShadow = true;
+            scene.add(labFloor);
+
+            // Muri laterali del laboratorio
+            addWallBox(-16, 3.5, 8, 1.2, 7, 28, 0x334155);
+            addWallBox(16, 3.5, 8, 1.2, 7, 28, 0x334155);
+
+            // Parete Sud del laboratorio (con ingresso ampio al centro x tra -4 e +4)
+            addWallBox(-10, 3.5, 22, 12, 7, 1.2, 0x334155);
+            addWallBox(10, 3.5, 22, 12, 7, 1.2, 0x334155);
+            addWallBox(0, 6.2, 22, 8.5, 1.6, 1.2, 0x0284c7, false);
+
+            // Insegna Laboratorio "BUSSA SCAPPA AL PIÙ LONTANO"
+            const labSign = createFloatingLabel('🧪 BUSSA SCAPPA AL PIÙ LONTANO', '#0f172a', '#38bdf8');
+            labSign.position.set(0, 8.2, 22.5);
+            labSign.scale.set(11, 2.6, 1);
+            scene.add(labSign);
+
+            // Parete Nord del laboratorio verso la Piazza (apertura centrale x tra -4 e +4)
+            addWallBox(-10, 3.5, -6, 12, 7, 1.2, 0x334155);
+            addWallBox(10, 3.5, -6, 12, 7, 1.2, 0x334155);
+
+            // Portone chiuso finché non si crea "La Benedetta"
+            gateMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(8, 6.5, 0.8),
+                new THREE.MeshStandardMaterial({
+                    color: 0x0284c7,
+                    emissive: 0x0369a1,
+                    transparent: true,
+                    opacity: 0.78
+                })
+            );
+            gateMesh.position.set(0, 3.25, -6);
+            scene.add(gateMesh);
+            gateMesh.userData.collider = new THREE.Box3().setFromCenterAndSize(gateMesh.position, new THREE.Vector3(8, 6.5, 1.2));
+            colliders.push(gateMesh.userData.collider);
+
+            // Sentiero luminoso verso l'arena del Boss (visibile quando il portone si apre!)
+            arenaBeaconGroup = new THREE.Group();
+            const pathStrip = new THREE.Mesh(
+                new THREE.PlaneGeometry(4.5, 28),
+                new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.32, side: THREE.DoubleSide })
+            );
+            pathStrip.rotation.x = -Math.PI / 2;
+            pathStrip.position.set(0, 0.14, -20);
+            arenaBeaconGroup.add(pathStrip);
+            arenaBeaconGroup.visible = false;
+            scene.add(arenaBeaconGroup);
+
+            // Colonne di riparo nella Piazza della Boss Fight (utili per schivare L'Aurora!)
+            const pillarCoords = [
+                [-11, -24], [11, -24],
+                [-15, -38], [15, -38],
+                [-8, -50], [8, -50]
+            ];
+            pillarCoords.forEach(([px, pz]) => {
+                addWallBox(px, 2.6, pz, 2.2, 5.2, 2.2, 0x475569);
+            });
+
+            // Case decorative lungo la strada iniziale
+            addWallBox(-22, 4, 34, 8, 8, 10, 0x3b2f2f, false);
+            addWallBox(22, 4, 34, 8, 8, 10, 0x2f3b4c, false);
+
+            // Calderone Alchemico al centro del Laboratorio (0, 0, 8)
+            cauldronGroup = new THREE.Group();
+            cauldronGroup.position.set(0, 0, 8);
+            const pot = new THREE.Mesh(
+                new THREE.CylinderGeometry(1.4, 1.0, 1.5, 20),
+                new THREE.MeshStandardMaterial({ color: 0x1e1b4b, metalness: 0.6, roughness: 0.3 })
+            );
+            pot.position.y = 0.75;
+            pot.castShadow = true;
+            cauldronGroup.add(pot);
+
+            cauldronLiquidMesh = new THREE.Mesh(
+                new THREE.CircleGeometry(1.22, 20),
+                new THREE.MeshStandardMaterial({ color: 0x475569, emissive: 0x0284c7, emissiveIntensity: 0.6 })
+            );
+            cauldronLiquidMesh.rotation.x = -Math.PI / 2;
+            cauldronLiquidMesh.position.y = 1.48;
+            cauldronGroup.add(cauldronLiquidMesh);
+
+            const cauldronLabel = createFloatingLabel('⚗️ CALDERONE (Premi F)', '#0c4a6e', '#7dd3fc');
+            cauldronLabel.position.set(0, 3.1, 0);
+            cauldronGroup.add(cauldronLabel);
+            scene.add(cauldronGroup);
+
+            // Pozione "La Benedetta" (appare sopra il calderone dopo aver inserito i 4 ingredienti)
+            benedettaPickupMesh = new THREE.Group();
+            const flaskBody = new THREE.Mesh(
+                new THREE.SphereGeometry(0.55, 16, 16),
+                new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0ea5e9, emissiveIntensity: 0.9 })
+            );
+            const flaskNeck = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.18, 0.22, 0.45, 12),
+                new THREE.MeshStandardMaterial({ color: 0xfef08a })
+            );
+            flaskNeck.position.y = 0.62;
+            benedettaPickupMesh.add(flaskBody, flaskNeck);
+            benedettaPickupMesh.position.set(0, 2.4, 8);
+            benedettaPickupMesh.visible = false;
+            scene.add(benedettaPickupMesh);
+
+            // I 4 Ingredienti Calmanti sparsi nel laboratorio
+            const ingData = [
+                { name: 'Camomilla Lunare', color: 0xfde047, pos: [-11.5, 1.1, 16.5] },
+                { name: 'Polvere di Nuvola', color: 0xe0f2fe, pos: [11.5, 1.1, 16.5] },
+                { name: 'Rugiada di Brema', color: 0x34d399, pos: [-11.5, 1.1, -1.5] },
+                { name: 'Cristallo della Quiete', color: 0x38bdf8, pos: [11.5, 1.1, -1.5] }
+            ];
+
+            ingData.forEach((item, index) => {
+                const group = new THREE.Group();
+                group.position.set(...item.pos);
+
+                const orb = new THREE.Mesh(
+                    new THREE.OctahedronGeometry(0.55, 0),
+                    new THREE.MeshStandardMaterial({ color: item.color, emissive: item.color, emissiveIntensity: 0.7 })
+                );
+                orb.castShadow = true;
+                group.add(orb);
+
+                const ring = new THREE.Mesh(
+                    new THREE.RingGeometry(0.7, 0.95, 24),
+                    new THREE.MeshBasicMaterial({ color: item.color, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })
+                );
+                ring.rotation.x = -Math.PI / 2;
+                ring.position.y = -0.95;
+                group.add(ring);
+
+                const lbl = createFloatingLabel(`✨ ${item.name}`, '#0f172a', '#fde047');
+                lbl.position.y = 1.4;
+                lbl.scale.set(4.5, 1.15, 1);
+                group.add(lbl);
+
+                group.userData = { index, name: item.name, collected: false };
+                scene.add(group);
+                ingredients.push(group);
+            });
+        }
+
+        // ==========================================
+        // 6. GIOCATORE, SCIENZIATI, CITTADINI E GIGANTE
+        // ==========================================
+        function buildPlayer() {
+            playerGroup = new THREE.Group();
+            playerGroup.position.set(0, 0, 34); // Inizio fuori casa sulla strada
+
+            // Corpo
+            const torso = new THREE.Mesh(
+                new THREE.BoxGeometry(0.95, 1.25, 0.55),
+                new THREE.MeshStandardMaterial({ color: 0x3b82f6 })
+            );
+            torso.position.y = 1.25;
+            torso.castShadow = true;
+            playerGroup.add(torso);
+
+            // Testa
+            const head = new THREE.Mesh(
+                new THREE.SphereGeometry(0.42, 16, 16),
+                new THREE.MeshStandardMaterial({ color: 0xfed7aa })
+            );
+            head.position.y = 2.25;
+            head.castShadow = true;
+            playerGroup.add(head);
+
+            // Capelli del protagonista
+            const hair = new THREE.Mesh(
+                new THREE.SphereGeometry(0.45, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
+                new THREE.MeshStandardMaterial({ color: 0x451a03 })
+            );
+            hair.position.y = 2.3;
+            playerGroup.add(hair);
+
+            // Gambe
+            const legMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
+            const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.75, 0.38), legMat);
+            leftLeg.position.set(-0.24, 0.38, 0);
+            const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.75, 0.38), legMat);
+            rightLeg.position.set(0.24, 0.38, 0);
+            playerGroup.add(leftLeg, rightLeg);
+            playerGroup.userData = { leftLeg, rightLeg };
+
+            scene.add(playerGroup);
+        }
+
+        function createScientist(coatColor, x, z, labelText) {
+            const g = new THREE.Group();
+            g.position.set(x, 0, z);
+            const body = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.45, 0.55, 1.6, 14),
+                new THREE.MeshStandardMaterial({ color: coatColor })
+            );
+            body.position.y = 0.8;
+            body.castShadow = true;
+            const head = new THREE.Mesh(
+                new THREE.SphereGeometry(0.4, 14, 14),
+                new THREE.MeshStandardMaterial({ color: 0xfed7aa })
+            );
+            head.position.y = 1.95;
+            const lbl = createFloatingLabel(labelText, '#1e1b4b', '#38bdf8');
+            lbl.position.y = 3.0;
+            lbl.scale.set(4.8, 1.2, 1);
+            g.add(body, head, lbl);
+            scene.add(g);
+            return g;
+        }
+
+        function buildNPCsAndCitizens() {
+            // Luana e Carapalatozzolo vicino al calderone nel laboratorio
+            luanaGroup = createScientist(0xec4899, -3.5, 7, '👩‍🔬 Luana');
+            carapalatozzoloGroup = createScientist(0x10b981, 3.5, 7, '🧙‍♂️ Carapalatozzolo');
+
+            // Cittadini trasformati dall'Aurora: ALTI, SENZA CAPELLI E CON LA TESTA A PUNTA!
+            const citPositions = [
+                [-8, 28], [9, 30], [-11, 36], [10, 25],
+                [-20, -28], [20, -32], [-22, -45], [22, -48]
+            ];
+            citPositions.forEach(([cx, cz], i) => {
+                const cit = new THREE.Group();
+                cit.position.set(cx, 0, cz);
+
+                // Corpo allungato (persone alte)
+                const body = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.42, 0.5, 2.3, 12),
+                    new THREE.MeshStandardMaterial({ color: 0x64748b })
+                );
+                body.position.y = 1.15;
+                body.castShadow = true;
+
+                // Testa a punta (cono senza capelli!)
+                const pointyHead = new THREE.Mesh(
+                    new THREE.ConeGeometry(0.44, 1.15, 14),
+                    new THREE.MeshStandardMaterial({ color: 0xfed7aa })
+                );
+                pointyHead.position.y = 2.85;
+
+                // Testa normale e capelli (nascosti finché non vinci!)
+                const normalHead = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.42, 14, 14),
+                    new THREE.MeshStandardMaterial({ color: 0xfed7aa })
+                );
+                normalHead.position.y = 2.25;
+                normalHead.visible = false;
+
+                const hairColors = [0x78350f, 0xd97706, 0x1e293b, 0xb91c1c];
+                const hair = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.45, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55),
+                    new THREE.MeshStandardMaterial({ color: hairColors[i % hairColors.length] })
+                );
+                hair.position.y = 2.32;
+                hair.visible = false;
+
+                cit.add(body, pointyHead, normalHead, hair);
+                cit.userData = {
+                    baseX: cx,
+                    baseZ: cz,
+                    phase: i * 1.1,
+                    body,
+                    pointyHead,
+                    normalHead,
+                    hair
+                };
+                scene.add(cit);
+                citizens.push(cit);
+            });
+        }
+
+        function buildGiantOfBremen() {
+            giantGroup = new THREE.Group();
+            giantGroup.position.set(0, 0, -56);
+
+            // Busto colossale del Gigante di Brema
+            const torso = new THREE.Mesh(
+                new THREE.CylinderGeometry(2.8, 3.4, 6.8, 18),
+                new THREE.MeshStandardMaterial({ color: 0x581c87, roughness: 0.6 })
+            );
+            torso.position.y = 4.5;
+            torso.castShadow = true;
+
+            // Testa del Gigante (senza capelli e con la testa a punta)
+            giantHead = new THREE.Group();
+            giantHead.position.y = 9.2;
+
+            const skull = new THREE.Mesh(
+                new THREE.ConeGeometry(1.7, 3.6, 18),
+                new THREE.MeshStandardMaterial({ color: 0xfdba74 })
+            );
+            skull.position.y = 0.6;
+            giantHead.add(skull);
+
+            // Occhi luminosi viola/verdi
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0x4ade80 });
+            const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 10), eyeMat);
+            eyeL.position.set(-0.55, 0.1, 1.35);
+            const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 10), eyeMat);
+            eyeR.position.set(0.55, 0.1, 1.35);
+            giantHead.add(eyeL, eyeR);
+
+            // Braccia gigantesche
+            const armMat = new THREE.MeshStandardMaterial({ color: 0xfdba74 });
+            giantLeftArm = new THREE.Mesh(new THREE.BoxGeometry(1.3, 4.8, 1.3), armMat);
+            giantLeftArm.position.set(-3.7, 5.2, 0.6);
+            giantLeftArm.rotation.x = -0.35;
+
+            giantRightArm = new THREE.Mesh(new THREE.BoxGeometry(1.3, 4.8, 1.3), armMat);
+            giantRightArm.position.set(3.7, 5.2, 0.6);
+            giantRightArm.rotation.x = -0.35;
+
+            // Ampolla gigante de "L'Aurora" in mano
+            const auroraBottle = new THREE.Mesh(
+                new THREE.SphereGeometry(1.15, 16, 16),
+                new THREE.MeshStandardMaterial({ color: 0xa855f7, emissive: 0x4ade80, emissiveIntensity: 0.85 })
+            );
+            auroraBottle.position.set(0, -2.5, 0.8);
+            giantLeftArm.add(auroraBottle);
+
+            // Aura magica attorno al Gigante
+            giantAuraMesh = new THREE.Mesh(
+                new THREE.TorusGeometry(4.8, 0.18, 12, 36),
+                new THREE.MeshBasicMaterial({ color: 0xd946ef, transparent: true, opacity: 0.65 })
+            );
+            giantAuraMesh.rotation.x = Math.PI / 2;
+            giantAuraMesh.position.y = 1.0;
+
+            const bossLabel = createFloatingLabel('👹 IL GIGANTE DI BREMA', '#3b0764', '#f0abfc');
+            bossLabel.position.y = 13.0;
+            bossLabel.scale.set(9.5, 2.3, 1);
+
+            giantGroup.add(torso, giantHead, giantLeftArm, giantRightArm, giantAuraMesh, bossLabel);
+            scene.add(giantGroup);
+        }
+
+        // ==========================================
+        // 7. CONTROLLI INPUT (WASD, SPAZIO, E, F, MOUSE)
+        // ==========================================
+        function requestPointerLockSafe() {
+            const canvas = document.getElementById('game-canvas');
+            if (canvas && canvas.requestPointerLock) {
+                try {
+                    canvas.requestPointerLock();
+                } catch (e) {}
+            }
+        }
+
+        function setupInputListeners() {
+            window.addEventListener('keydown', (e) => {
+                if (!gameStarted) return;
+                const k = e.key.toLowerCase();
+                if (k === 'w' || k === 'arrowup') keys.w = true;
+                if (k === 'a' || k === 'arrowleft') keys.a = true;
+                if (k === 's' || k === 'arrowdown') keys.s = true;
+                if (k === 'd' || k === 'arrowright') keys.d = true;
+                if (e.code === 'Space') {
+                    e.preventDefault();
+                    if (isGrounded) {
+                        playerVelocity.y = 9.2;
+                        isGrounded = false;
+                        SFX.jump();
+                    }
+                }
+                if (k === 'e') handlePickupKey();
+                if (k === 'f') handlePlaceKey();
+            });
+
+            window.addEventListener('keyup', (e) => {
+                const k = e.key.toLowerCase();
+                if (k === 'w' || k === 'arrowup') keys.w = false;
+                if (k === 'a' || k === 'arrowleft') keys.a = false;
+                if (k === 's' || k === 'arrowdown') keys.s = false;
+                if (k === 'd' || k === 'arrowright') keys.d = false;
+            });
+
+            document.addEventListener('pointerlockchange', () => {
+                isPointerLocked = (document.pointerLockElement === document.getElementById('game-canvas'));
+                const btn = document.getElementById('lock-hint-btn');
+                if (btn) {
+                    btn.textContent = isPointerLocked ? '🖱️ Visuale Attiva (ESC esce)' : '🖱️ Blocca Visuale Mouse';
+                }
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!gameStarted) return;
+                if (isPointerLocked) {
+                    targetYaw -= e.movementX * 0.0022;
+                    targetPitch = Math.max(-0.22, Math.min(0.75, targetPitch + e.movementY * 0.0018));
+                } else if (isDraggingMouse) {
+                    const dx = e.clientX - prevMouseX;
+                    const dy = e.clientY - prevMouseY;
+                    targetYaw -= dx * 0.0045;
+                    targetPitch = Math.max(-0.22, Math.min(0.75, targetPitch + dy * 0.0038));
+                }
+                prevMouseX = e.clientX;
+                prevMouseY = e.clientY;
+            });
+
+            const canvas = document.getElementById('game-canvas');
+            canvas.addEventListener('mousedown', (e) => {
+                if (!gameStarted) return;
+                if (e.button === 0) {
+                    isDraggingMouse = true;
+                    prevMouseX = e.clientX;
+                    prevMouseY = e.clientY;
+                    handleAttackClick();
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                isDraggingMouse = false;
+            });
+        }
+
+        // ==========================================
+        // 8. AZIONI INTERATTIVE: RACCOGLI (E), POSIZIONA (F), ATTACCA (CLICK)
+        // ==========================================
+        function handlePickupKey() {
+            const pPos = playerGroup.position;
+
+            // 1. Controlla ingredienti vicini
+            for (const ing of ingredients) {
+                if (!ing.userData.collected && pPos.distanceTo(ing.position) < 3.4) {
+                    ing.userData.collected = true;
+                    ing.visible = false;
+                    gameState.collectedCount++;
+                    SFX.pickup();
+                    spawnBurstParticles(ing.position, 0xfde047, 18);
+                    updateInventoryUI();
+
+                    setDialogue(
+                        'Luana', '👩‍🔬', 'Atto 2: Alchimia',
+                        `Posiziona gli ingredienti nel calderone con [F] (${gameState.collectedCount}/4 raccolti)`,
+                        `Hai raccolto <strong class="text-amber-300">${ing.userData.name}</strong>! Avvicinati al calderone al centro e premi <strong>F</strong> per inserirlo!`
+                    );
+                    return;
+                }
+            }
+
+            // 2. Controlla se "La Benedetta" è pronta sopra il calderone da raccogliere con E
+            if (benedettaPickupMesh.visible && !gameState.hasBenedetta && pPos.distanceTo(cauldronGroup.position) < 4.2) {
+                benedettaPickupMesh.visible = false;
+                gameState.hasBenedetta = true;
+                gameState.act = 3;
+                SFX.pickup();
+                spawnBurstParticles(cauldronGroup.position, 0x38bdf8, 28);
+
+                // Apri il portone nord verso la piazza della Boss Fight e rimuovi completamente il collider
+                if (gateMesh) {
+                    if (gateMesh.userData.collider) {
+                        const idx = colliders.indexOf(gateMesh.userData.collider);
+                        if (idx !== -1) colliders.splice(idx, 1);
+                    }
+                    scene.remove(gateMesh);
+                    gateMesh = null;
+                }
+                if (arenaBeaconGroup) arenaBeaconGroup.visible = true;
+
+                document.getElementById('inventory-count').textContent = '✨ LA BENEDETTA PRONTA!';
+                document.getElementById('boss-hud').classList.remove('hidden');
+
+                setDialogue(
+                    'Carapalatozzolo', '🧙‍♂️', 'Atto 3: Lo Scontro',
+                    'Esci dal portone Nord (passaggio aperto!) e lancia La Benedetta [Click Sinistro]!',
+                    'Hai preso <strong class="text-sky-300">La Benedetta</strong>! Il portone Nord si è spalancato: segui il sentiero luminoso nella piazza e colpisci il <strong>Gigante di Brema</strong> prima che scagli <em>L\'Aurora</em>!'
+                );
+            }
+        }
+
+        function handlePlaceKey() {
+            const pPos = playerGroup.position;
+            if (pPos.distanceTo(cauldronGroup.position) < 4.2) {
+                if (gameState.collectedCount > gameState.placedCount) {
+                    const toPlace = gameState.collectedCount - gameState.placedCount;
+                    gameState.placedCount += toPlace;
+                    SFX.place();
+                    spawnBurstParticles(new THREE.Vector3(0, 1.8, 8), 0x38bdf8, 24);
+                    updateInventoryUI();
+
+                    // Cambia colore liquido del calderone in base al progresso
+                    const ratio = gameState.placedCount / 4;
+                    cauldronLiquidMesh.material.color.setHex(ratio >= 1 ? 0x38bdf8 : 0x0ea5e9);
+                    cauldronLiquidMesh.material.emissiveIntensity = 0.6 + ratio * 0.9;
+
+                    if (gameState.placedCount >= 4) {
+                        SFX.brewComplete();
+                        benedettaPickupMesh.visible = true;
+                        setDialogue(
+                            'Luana & Carapalatozzolo', '🧪', 'Atto 2: Pozione Pronta!',
+                            'Premi [E] vicino al calderone per raccogliere La Benedetta!',
+                            'INCREDIBILE! Tutti e 4 gli ingredienti si sono fusi! Sopra il calderone fluttua <strong class="text-sky-300">La Benedetta</strong>: premi <strong>E</strong> per prenderla!'
+                        );
+                    } else {
+                        setDialogue(
+                            'Carapalatozzolo', '🧙‍♂️', 'Atto 2: Alchimia',
+                            `Ingredienti nel calderone: ${gameState.placedCount}/4`,
+                            `Ottimo! Hai inserito gli ingredienti nel calderone (${gameState.placedCount}/4). Trova gli altri negli angoli del laboratorio con <strong>E</strong>!`
+                        );
+                    }
+                }
+            }
+        }
+
+        let lastThrowTime = 0;
+        function handleAttackClick() {
+            const now = performance.now();
+            if (now - lastThrowTime < 340) return; // Cooldown lancio
+            lastThrowTime = now;
+
+            const ch = document.getElementById('crosshair');
+            ch.classList.add('crosshair-active');
+            setTimeout(() => ch.classList.remove('crosshair-active'), 120);
+
+            if (!gameState.hasBenedetta) {
+                SFX.throwPotion();
+                setDialogue(
+                    'Luana', '👩‍🔬', 'Atto 2: Preparazione',
+                    'Crea prima La Benedetta nel calderone!',
+                    'Non hai ancora <strong>La Benedetta</strong>! Raccogli i 4 ingredienti con <strong>E</strong> e mettili nel calderone con <strong>F</strong>.'
+                );
+                return;
+            }
+
+            // Lancia un'ampolla luminosa de "La Benedetta" lungo la direzione dello sguardo
+            SFX.throwPotion();
+            const origin = playerGroup.position.clone().add(new THREE.Vector3(0, 2.0, 0));
+
+            // Calcola direzione dalla camera verso il punto mirato al centro dello schermo
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(0, 0.06), camera);
+            const targetPoint = raycaster.ray.origin.clone().add(raycaster.ray.direction.clone().multiplyScalar(65));
+            const dir = targetPoint.sub(origin).normalize();
+
+            const projMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(0.42, 12, 12),
+                new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x7dd3fc, emissiveIntensity: 1.0 })
+            );
+            projMesh.position.copy(origin);
+            scene.add(projMesh);
+
+            projectiles.push({
+                mesh: projMesh,
+                velocity: dir.multiplyScalar(42),
+                fromPlayer: true,
+                life: 2.5
+            });
+        }
+
+        function updateInventoryUI() {
+            document.getElementById('inventory-count').textContent = `${gameState.placedCount}/4 nel Calderone (${gameState.collectedCount}/4 trovati)`;
+            const icons = document.getElementById('inventory-icons').children;
+            for (let i = 0; i < 4; i++) {
+                if (i < gameState.placedCount) {
+                    icons[i].className = 'w-8 h-8 rounded-lg bg-sky-500/40 border-2 border-sky-300 flex items-center justify-center text-sm shadow-md';
+                } else if (i < gameState.collectedCount) {
+                    icons[i].className = 'w-8 h-8 rounded-lg bg-amber-500/40 border-2 border-amber-300 flex items-center justify-center text-sm animate-pulse';
+                }
+            }
+        }
+
+        // ==========================================
+        // 9. EFFETTI PARTICELLARI E ONDE D'URTO
+        // ==========================================
+        function spawnBurstParticles(pos, colorHex, count = 15) {
+            const geo = new THREE.SphereGeometry(0.16, 6, 6);
+            const mat = new THREE.MeshBasicMaterial({ color: colorHex });
+            for (let i = 0; i < count; i++) {
+                const m = new THREE.Mesh(geo, mat);
+                m.position.copy(pos);
+                scene.add(m);
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 6;
+                particles.push({
+                    mesh: m,
+                    vel: new THREE.Vector3(Math.cos(angle) * speed, 2 + Math.random() * 5, Math.sin(angle) * speed),
+                    life: 0.6 + Math.random() * 0.4
+                });
+            }
+        }
+
+        function spawnAuroraShockwave(origin) {
+            const ring = new THREE.Mesh(
+                new THREE.RingGeometry(1.2, 2.2, 36),
+                new THREE.MeshBasicMaterial({ color: 0xd946ef, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+            );
+            ring.rotation.x = -Math.PI / 2;
+            ring.position.set(origin.x, 0.25, origin.z);
+            scene.add(ring);
+            shockwaves.push({ mesh: ring, radius: 1.5, maxRadius: 42, speed: 15, hitPlayer: false });
+        }
+
+        // ==========================================
+        // 10. LOOP PRINCIPALE DI AGGIORNAMENTO E RENDERING
+        // ==========================================
+        function resolvePlayerCollisions(pos) {
+            const r = 0.62;
+            for (const box of colliders) {
+                const closestX = Math.max(box.min.x, Math.min(pos.x, box.max.x));
+                const closestZ = Math.max(box.min.z, Math.min(pos.z, box.max.z));
+                const dx = pos.x - closestX;
+                const dz = pos.z - closestZ;
+                const distSq = dx * dx + dz * dz;
+                if (distSq < r * r) {
+                    const dist = Math.sqrt(distSq);
+                    if (dist > 0.0001) {
+                        const overlap = r - dist;
+                        pos.x += (dx / dist) * overlap;
+                        pos.z += (dz / dist) * overlap;
+                    } else {
+                        pos.z += r;
+                    }
+                }
+            }
+            pos.x = Math.max(-52, Math.min(52, pos.x));
+            pos.z = Math.max(-68, Math.min(44, pos.z));
+        }
+
+        function updatePlayer(dt, elapsed) {
+            // Interpolazione fluida rotazione camera
+            const rotLerp = 1 - Math.exp(-16 * dt);
+            yaw += (targetYaw - yaw) * rotLerp;
+            pitch += (targetPitch - pitch) * rotLerp;
+
+            const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+            const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+
+            const moveDir = new THREE.Vector3();
+            if (keys.w) moveDir.add(forward);
+            if (keys.s) moveDir.sub(forward);
+            if (keys.d) moveDir.add(right);
+            if (keys.a) moveDir.sub(right);
+
+            const speed = 13.0;
+            if (moveDir.lengthSq() > 0) {
+                moveDir.normalize();
+                playerGroup.position.x += moveDir.x * speed * dt;
+                playerGroup.position.z += moveDir.z * speed * dt;
+                resolvePlayerCollisions(playerGroup.position);
+
+                // Orientamento fluido personaggio
+                const targetModelYaw = Math.atan2(moveDir.x, moveDir.z);
+                let diff = targetModelYaw - playerGroup.rotation.y;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                playerGroup.rotation.y += diff * (1 - Math.exp(-14 * dt));
+
+                // Animazione gambe
+                const swing = Math.sin(elapsed * 14) * 0.55;
+                playerGroup.userData.leftLeg.rotation.x = swing;
+                playerGroup.userData.rightLeg.rotation.x = -swing;
+            } else {
+                playerGroup.userData.leftLeg.rotation.x *= 0.8;
+                playerGroup.userData.rightLeg.rotation.x *= 0.8;
+            }
+
+            // Gravità e salto
+            playerVelocity.y -= 24 * dt;
+            playerGroup.position.y += playerVelocity.y * dt;
+            if (playerGroup.position.y <= 0) {
+                playerGroup.position.y = 0;
+                playerVelocity.y = 0;
+                isGrounded = true;
+            }
+
+            // Telecamera terza persona ultra-fluida
+            const camDist = 6.8;
+            const camHeight = 3.2 + Math.sin(pitch) * 4.2;
+            const desiredCamPos = new THREE.Vector3(
+                playerGroup.position.x + Math.sin(yaw) * camDist * Math.cos(pitch),
+                Math.max(1.2, playerGroup.position.y + camHeight),
+                playerGroup.position.z + Math.cos(yaw) * camDist * Math.cos(pitch)
+            );
+            const desiredLook = new THREE.Vector3(
+                playerGroup.position.x - Math.sin(yaw) * 6,
+                playerGroup.position.y + 1.8 - Math.sin(pitch) * 2.5,
+                playerGroup.position.z - Math.cos(yaw) * 6
+            );
+
+            const camLerp = 1 - Math.exp(-14 * dt);
+            currentCamPos.lerp(desiredCamPos, camLerp);
+            currentLookTarget.lerp(desiredLook, camLerp);
+            camera.position.copy(currentCamPos);
+            camera.lookAt(currentLookTarget);
+
+            // Controlla ingresso nel laboratorio (Atto 1 -> Atto 2)
+            if (gameState.act === 1 && playerGroup.position.z < 20) {
+                gameState.act = 2;
+                SFX.pickup();
+                setDialogue(
+                    'Luana', '👩‍🔬', 'Atto 2: Il Laboratorio',
+                    'Raccogli i 4 ingredienti [E] e mettili nel calderone [F]!',
+                    'Benvenuto in <em>"Bussa scappa al più lontano"</em>! Io sono <strong>Luana</strong> e lui è <strong>Carapalatozzolo</strong>. Raccogli i 4 ingredienti luminosi con <strong>E</strong> e versali nel calderone con <strong>F</strong> per creare <strong>La Benedetta</strong>!'
+                );
+            }
+
+            updateInteractionPrompt();
+        }
+
+        function updateInteractionPrompt() {
+            const promptEl = document.getElementById('interaction-prompt');
+            const keyEl = document.getElementById('prompt-key');
+            const textEl = document.getElementById('prompt-text');
+            const pPos = playerGroup.position;
+
+            // Vicino a un ingrediente non ancora raccolto
+            for (const ing of ingredients) {
+                if (!ing.userData.collected && pPos.distanceTo(ing.position) < 3.4) {
+                    promptEl.classList.remove('hidden');
+                    keyEl.textContent = 'E';
+                    textEl.textContent = `Raccogli ${ing.userData.name}`;
+                    return;
+                }
+            }
+
+            // Vicino al calderone
+            if (pPos.distanceTo(cauldronGroup.position) < 4.2) {
+                if (benedettaPickupMesh.visible && !gameState.hasBenedetta) {
+                    promptEl.classList.remove('hidden');
+                    keyEl.textContent = 'E';
+                    textEl.textContent = 'Prendi La Benedetta!';
+                    return;
+                }
+                if (gameState.collectedCount > gameState.placedCount) {
+                    promptEl.classList.remove('hidden');
+                    keyEl.textContent = 'F';
+                    textEl.textContent = 'Versa Ingrediente nel Calderone';
+                    return;
+                }
+            }
+
+            promptEl.classList.add('hidden');
+        }
+
+        function updateBossAndProjectiles(dt, elapsed) {
+            // Animazione ingredienti e pozione fluttante
+            ingredients.forEach((ing, i) => {
+                if (!ing.userData.collected) {
+                    ing.rotation.y = elapsed * 2 + i;
+                    ing.children[0].position.y = Math.sin(elapsed * 3 + i) * 0.18;
+                }
+            });
+            if (benedettaPickupMesh.visible) {
+                benedettaPickupMesh.rotation.y = elapsed * 2.5;
+                benedettaPickupMesh.position.y = 2.4 + Math.sin(elapsed * 4) * 0.2;
+            }
+
+            // Animazione cittadini
+            citizens.forEach((cit) => {
+                if (!gameState.victory) {
+                    // Corrono agitati
+                    cit.position.x = cit.userData.baseX + Math.sin(elapsed * 2.2 + cit.userData.phase) * 2.5;
+                    cit.rotation.y = Math.cos(elapsed * 2.2 + cit.userData.phase) > 0 ? Math.PI / 2 : -Math.PI / 2;
+                } else {
+                    // Saltellano felici dopo la vittoria!
+                    cit.position.y = Math.abs(Math.sin(elapsed * 6 + cit.userData.phase)) * 0.6;
+                }
+            });
+
+            // Animazione & AI Boss Fight (Atto 3)
+            if (giantGroup && !gameState.victory) {
+                giantAuraMesh.rotation.z = elapsed * 1.5;
+                giantHead.rotation.y = Math.sin(elapsed * 1.3) * 0.25;
+
+                // Il Gigante si attiva quando hai La Benedetta o entri nella piazza (z < -8)
+                if (gameState.hasBenedetta || playerGroup.position.z < -8) {
+                    // Guarda verso il giocatore e si sposta lateralmente
+                    const targetX = Math.sin(elapsed * (gameState.bossEnraged ? 1.3 : 0.7)) * 14;
+                    giantGroup.position.x += (targetX - giantGroup.position.x) * 2.5 * dt;
+                    giantGroup.lookAt(playerGroup.position.x, 0, playerGroup.position.z);
+
+                    // Attacco sfera velenosa "L'Aurora"
+                    gameState.bossAttackCooldown -= dt;
+                    if (gameState.bossAttackCooldown <= 0) {
+                        gameState.bossAttackCooldown = gameState.bossEnraged ? 1.45 : 2.2;
+                        SFX.bossThrow();
+
+                        const spawnPos = giantGroup.position.clone().add(new THREE.Vector3(0, 6.2, 0));
+                        const aimTarget = playerGroup.position.clone().add(new THREE.Vector3(0, 1.3, 0));
+                        const dir = aimTarget.sub(spawnPos).normalize();
+
+                        const auroraBall = new THREE.Mesh(
+                            new THREE.SphereGeometry(0.95, 14, 14),
+                            new THREE.MeshStandardMaterial({ color: 0xa855f7, emissive: 0x4ade80, emissiveIntensity: 0.9 })
+                        );
+                        auroraBall.position.copy(spawnPos);
+                        scene.add(auroraBall);
+
+                        projectiles.push({
+                            mesh: auroraBall,
+                            velocity: dir.multiplyScalar(gameState.bossEnraged ? 26 : 20),
+                            fromPlayer: false,
+                            life: 4.0
+                        });
+                    }
+
+                    // Attacco Onda d'Urto (salta con SPAZIO per evitarla!)
+                    gameState.bossShockwaveCooldown -= dt;
+                    if (gameState.bossShockwaveCooldown <= 0) {
+                        gameState.bossShockwaveCooldown = gameState.bossEnraged ? 5.0 : 7.2;
+                        spawnAuroraShockwave(giantGroup.position);
+                    }
+                }
+            }
+
+            // Aggiorna proiettili
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.life -= dt;
+                p.mesh.position.addScaledVector(p.velocity, dt);
+
+                if (p.fromPlayer) {
+                    // Collisione con il Gigante di Brema
+                    const bossCenter = giantGroup.position.clone().add(new THREE.Vector3(0, 5.5, 0));
+                    if (!gameState.victory && p.mesh.position.distanceTo(bossCenter) < 4.6) {
+                        SFX.bossHit();
+                        spawnBurstParticles(p.mesh.position, 0x38bdf8, 26);
+                        scene.remove(p.mesh);
+                        projectiles.splice(i, 1);
+
+                        gameState.bossHp = Math.max(0, gameState.bossHp - 15);
+                        document.getElementById('boss-hp-bar').style.width = `${gameState.bossHp}%`;
+                        document.getElementById('boss-hp-text').textContent = `${gameState.bossHp}%`;
+
+                        if (gameState.bossHp <= 50 && !gameState.bossEnraged) {
+                            gameState.bossEnraged = true;
+                            document.getElementById('boss-phase-tag').textContent = '⚡ Furia Massima!';
+                            setDialogue(
+                                'Gigante di Brema', '👹', 'Boss Fight • Fase 2',
+                                'Continua a colpirlo e salta le onde viola con [SPAZIO]!',
+                                'NOOO! La mia pozione <em>L\'Aurora</em> sta perdendo effetto! Non mi fermerete mai!'
+                            );
+                        }
+
+                        if (gameState.bossHp <= 0) {
+                            triggerVictory();
+                        }
+                        continue;
+                    }
+                } else {
+                    // Proiettile del Boss contro il Giocatore o Ripari
+                    const pCenter = playerGroup.position.clone().add(new THREE.Vector3(0, 1.3, 0));
+                    if (p.mesh.position.distanceTo(pCenter) < 1.35) {
+                        damagePlayer(18);
+                        spawnBurstParticles(p.mesh.position, 0xd946ef, 18);
+                        scene.remove(p.mesh);
+                        projectiles.splice(i, 1);
+                        continue;
+                    }
+
+                    // Controlla collisione contro colonne di riparo
+                    let hitWall = false;
+                    for (const box of colliders) {
+                        if (box.containsPoint(p.mesh.position)) {
+                            hitWall = true;
+                            break;
+                        }
+                    }
+                    if (hitWall) {
+                        spawnBurstParticles(p.mesh.position, 0xa855f7, 10);
+                        scene.remove(p.mesh);
+                        projectiles.splice(i, 1);
+                        continue;
+                    }
+                }
+
+                if (p.life <= 0 || p.mesh.position.y < 0) {
+                    scene.remove(p.mesh);
+                    projectiles.splice(i, 1);
+                }
+            }
+
+            // Aggiorna onde d'urto dell'Aurora
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                const sw = shockwaves[i];
+                sw.radius += sw.speed * dt;
+                const scale = sw.radius / 1.7;
+                sw.mesh.scale.set(scale, scale, 1);
+                sw.mesh.material.opacity = Math.max(0, 1 - sw.radius / sw.maxRadius);
+
+                const distToPlayer = Math.hypot(
+                    playerGroup.position.x - sw.mesh.position.x,
+                    playerGroup.position.z - sw.mesh.position.z
+                );
+                if (!sw.hitPlayer && Math.abs(distToPlayer - sw.radius) < 1.2 && playerGroup.position.y < 1.1) {
+                    sw.hitPlayer = true;
+                    damagePlayer(14);
+                }
+
+                if (sw.radius >= sw.maxRadius) {
+                    scene.remove(sw.mesh);
+                    shockwaves.splice(i, 1);
+                }
+            }
+
+            // Aggiorna particelle
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const pt = particles[i];
+                pt.life -= dt;
+                pt.vel.y -= 12 * dt;
+                pt.mesh.position.addScaledVector(pt.vel, dt);
+                pt.mesh.scale.setScalar(Math.max(0.01, pt.life));
+                if (pt.life <= 0) {
+                    scene.remove(pt.mesh);
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function damagePlayer(amount) {
+            if (gameState.victory) return;
+            SFX.playerHit();
+            gameState.playerHp = Math.max(0, gameState.playerHp - amount);
+            document.getElementById('player-hp-bar').style.width = `${gameState.playerHp}%`;
+            document.getElementById('player-hp-text').textContent = `${gameState.playerHp} / 100`;
+
+            if (gameState.playerHp <= 0) {
+                SFX.defeat();
+                gameStarted = false;
+                if (document.pointerLockElement) document.exitPointerLock();
+                document.getElementById('end-emoji').textContent = '🧪😵';
+                document.getElementById('end-title').textContent = 'COLPITO DALL\'AURORA!';
+                document.getElementById('end-desc').textContent = 'La pozione velenosa del Gigante di Brema ha avuto la meglio! Riprova a schivare i colpi dietro le colonne della piazza!';
+                document.getElementById('end-overlay').classList.remove('hidden');
+            }
+        }
+
+        function triggerVictory() {
+            gameState.victory = true;
+            SFX.victory();
+            spawnBurstParticles(giantGroup.position.clone().add(new THREE.Vector3(0, 5, 0)), 0xfde047, 50);
+
+            // Il Gigante si calma e rimpicciolisce leggermente
+            giantAuraMesh.visible = false;
+            giantGroup.scale.set(0.75, 0.75, 0.75);
+
+            // Tutti i cittadini tornano normali con i loro capelli!
+            citizens.forEach((cit) => {
+                cit.userData.body.scale.y = 0.75;
+                cit.userData.body.position.y = 0.85;
+                cit.userData.pointyHead.visible = false;
+                cit.userData.normalHead.visible = true;
+                cit.userData.hair.visible = true;
+            });
+
+            setDialogue(
+                'Tutta la Città di Brema', '🎉', 'VITTORIA!',
+                'Hai salvato tutti dal Gigante di Brema!',
+                'EVVIVA! <strong>La Benedetta</strong> ha calmato il Gigante prima che l\'Aurora ci colpisse! A tutti sono tornati i capelli e l\'aspetto di prima!'
+            );
+
+            setTimeout(() => {
+                if (document.pointerLockElement) document.exitPointerLock();
+                document.getElementById('end-overlay').classList.remove('hidden');
+            }, 2400);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.05);
+            const elapsed = clock.getElapsedTime();
+
+            if (gameStarted) {
+                updatePlayer(dt, elapsed);
+                updateBossAndProjectiles(dt, elapsed);
+            } else if (camera) {
+                // Inquadratura panoramica fluida prima di premere Start
+                camera.position.x = Math.sin(elapsed * 0.25) * 14;
+                camera.position.y = 11;
+                camera.position.z = 38;
+                camera.lookAt(0, 3, 0);
+            }
+
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        function onWindowResize() {
+            if (!camera || !renderer) return;
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // ==========================================
+        // 11. AVVIO PARTITA DAL PULSANTE INIZIALE
+        // ==========================================
+        function startGame3D() {
+            initAudio();
+            gameStarted = true;
+
+            document.getElementById('start-overlay').classList.add('hidden');
+            document.getElementById('hud-top').classList.remove('hidden');
+            document.getElementById('controls-legend').classList.remove('hidden');
+            document.getElementById('crosshair').classList.remove('hidden');
+
+            setDialogue(
+                'Il Tuo Risveglio', '🌅', 'Atto 1: La Fuga',
+                'Usa [WASD] per correre dentro il laboratorio "Bussa scappa al più lontano"!',
+                'Stamattina ti sei svegliato e hai visto persone alte, senza capelli e con la testa a punta scappare! I tuoi amici ti hanno indicato il laboratorio <strong>"Bussa scappa al più lontano"</strong> davanti a te: corri dentro!'
+            );
+
+            requestPointerLockSafe();
+        }
+
+        // Inizializza subito la scena 3D appena la pagina carica
+        window.addEventListener('DOMContentLoaded', () => {
+            initThree();
+        });
+    </script>
+</body>
+</html>
